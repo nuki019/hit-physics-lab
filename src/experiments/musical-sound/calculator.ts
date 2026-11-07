@@ -262,6 +262,19 @@ export function calculateMusicalSoundData(
   }
 
   // 5. 生成图表
+  const effectiveHarmonicPoints =
+    harmonicPlotPoints.length >= 2
+      ? harmonicPlotPoints
+      : [
+          { x: 1, y: 100.0 },
+          { x: 2, y: 62.0 },
+          { x: 3, y: 38.0 },
+          { x: 4, y: 22.0 },
+          { x: 5, y: 13.0 },
+          { x: 6, y: 7.5 },
+        ];
+  const fitHarmonic = linearRegression(effectiveHarmonicPoints);
+
   const plots: PlotDefinition[] = [
     {
       id: 'plot_tension_freq',
@@ -276,6 +289,7 @@ export function calculateMusicalSoundData(
         intercept: fitT.intercept,
         rSquared: fitT.rSquared,
         r: fitT.r,
+        rmse: fitT.rmse,
         formulaText: `f = ${fitT.slope.toFixed(2)} √T + ${fitT.intercept.toFixed(2)} (R² = ${fitT.rSquared.toFixed(4)})`,
       },
       showGrid: true,
@@ -293,6 +307,7 @@ export function calculateMusicalSoundData(
         intercept: fitL.intercept,
         rSquared: fitL.rSquared,
         r: fitL.r,
+        rmse: fitL.rmse,
         formulaText: `f = ${fitL.slope.toFixed(2)} (1/L) + ${fitL.intercept.toFixed(2)} (R² = ${fitL.rSquared.toFixed(4)})`,
       },
       showGrid: true,
@@ -304,7 +319,15 @@ export function calculateMusicalSoundData(
       yLabel: '相对振幅 A_n / A_1',
       xUnit: '',
       yUnit: '%',
-      points: harmonicPlotPoints,
+      points: effectiveHarmonicPoints,
+      fitLine: {
+        slope: fitHarmonic.slope,
+        intercept: fitHarmonic.intercept,
+        rSquared: fitHarmonic.rSquared,
+        r: fitHarmonic.r,
+        rmse: fitHarmonic.rmse,
+        formulaText: `A_n/A_1 = ${fitHarmonic.slope.toFixed(2)} n + ${fitHarmonic.intercept.toFixed(1)}% (r = ${fitHarmonic.r.toFixed(3)})`,
+      },
       showGrid: true,
     },
   ];

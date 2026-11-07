@@ -8,6 +8,8 @@ import {
   ChevronDown,
   Layers,
   BookMarked,
+  Save,
+  Share2,
 } from 'lucide-react';
 
 export interface ExperimentOption {
@@ -27,6 +29,8 @@ interface NavbarProps {
   onPrint: () => void;
   onOpenHelp: () => void;
   onOpenCatalog?: () => void;
+  onQuickSave?: () => void;
+  onOpenSaveModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -38,6 +42,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onPrint,
   onOpenHelp,
   onOpenCatalog,
+  onQuickSave,
+  onOpenSaveModal,
 }) => {
   const currentExp = experiments.find((e) => e.id === activeId);
 
@@ -91,6 +97,30 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* 右侧：动作按钮工具栏 */}
         <div className="flex items-center gap-2">
+          {/* 立即保存按钮（手机与电脑端显式存档） */}
+          {onQuickSave && (
+            <button
+              onClick={onQuickSave}
+              title="立即将当前实验数据与思考题保存至本地缓存与历史存档点"
+              className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg border border-emerald-400 transition-colors shadow-sm"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>立即保存</span>
+            </button>
+          )}
+
+          {/* 存档管理与跨设备传电脑 */}
+          {onOpenSaveModal && (
+            <button
+              onClick={onOpenSaveModal}
+              title="管理手机历史存档点、导出 JSON 备份或生成跨设备同步链接传给电脑打印"
+              className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-emerald-300 px-3 py-1.5 rounded-lg border border-emerald-500/40 transition-colors shadow-sm"
+            >
+              <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">存档 / 传电脑</span>
+            </button>
+          )}
+
           {/* 载入参考基准数据 */}
           <button
             onClick={onLoadDefaultData}

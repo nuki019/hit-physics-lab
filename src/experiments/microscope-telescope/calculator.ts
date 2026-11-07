@@ -238,14 +238,21 @@ export function calculateMicroscopeTelescopeData(
     ]);
   }
 
-  // 对显微镜总放大率执行线性回归: Γ = k * Δ + b
+  // 对显微镜总放大率与物镜放大率执行线性回归: Γ = k * Δ + b, β1 = k_β * Δ + b_β
   const effectivePointsGamma = fitPointsGamma.length >= 2 ? fitPointsGamma : [
     { x: 60.0, y: 7.4 },
     { x: 80.0, y: 9.8 },
     { x: 100.0, y: 12.3 },
     { x: 120.0, y: 14.8 },
   ];
+  const effectivePointsBeta = fitPointsBeta.length >= 2 ? fitPointsBeta : [
+    { x: 60.0, y: 1.34 },
+    { x: 80.0, y: 1.78 },
+    { x: 100.0, y: 2.22 },
+    { x: 120.0, y: 2.67 },
+  ];
   const fitMicroscope = linearRegression(effectivePointsGamma);
+  const fitBeta = linearRegression(effectivePointsBeta);
 
   // 4. 生成拟合图表
   const plots: PlotDefinition[] = [
@@ -262,6 +269,7 @@ export function calculateMicroscopeTelescopeData(
         intercept: fitMicroscope.intercept,
         rSquared: fitMicroscope.rSquared,
         r: fitMicroscope.r,
+        rmse: fitMicroscope.rmse,
         formulaText: `Γ = ${fitMicroscope.slope.toFixed(4)} Δ + ${fitMicroscope.intercept.toFixed(2)} (R² = ${fitMicroscope.rSquared.toFixed(4)})`,
       },
       showGrid: true,
@@ -273,7 +281,15 @@ export function calculateMicroscopeTelescopeData(
       yLabel: '物镜放大率 β1',
       xUnit: 'mm',
       yUnit: '',
-      points: fitPointsBeta,
+      points: effectivePointsBeta,
+      fitLine: {
+        slope: fitBeta.slope,
+        intercept: fitBeta.intercept,
+        rSquared: fitBeta.rSquared,
+        r: fitBeta.r,
+        rmse: fitBeta.rmse,
+        formulaText: `β1 = ${fitBeta.slope.toFixed(4)} Δ + ${fitBeta.intercept.toFixed(3)} (R² = ${fitBeta.rSquared.toFixed(4)})`,
+      },
       showGrid: true,
     },
   ];

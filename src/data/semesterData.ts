@@ -54,16 +54,26 @@ export const BOOK_METADATA: BookMeta = catalogJson.book_meta;
 // 已在平台正式上线并具备交互计算、拟合与 B5 导出的实验映射
 export const ONLINE_PLUGIN_MAP: Record<number, string> = {
   5: 'liquid-viscosity',          // 实验五：液体黏度的测定
+  8: 'quasi-steady-thermal',      // 培养大纲实验八 / 教材实验二十八：准稳态法
+  16: 'sound-velocity',           // 培养大纲实验十六 / 教材实验二十九：测定空气中的声速
+  17: 'musical-sound',            // 实验十七：探究乐音
   20: 'musical-sound',            // 实验二十：探究乐音
   21: 'microscope-telescope',     // 实验二十一：自组显微镜和望远镜
   22: 'newton-ring-wedge',        // 实验二十二：光的等厚干涉现象与应用（牛顿环与劈尖）
+  24: 'fraunhofer-diffraction',   // 实验二十四：单缝和圆孔的夫琅禾费衍射
+  28: 'quasi-steady-thermal',     // 实验二十八：用准稳态法测定不良导体的比热容和导热系数
+  29: 'sound-velocity',           // 实验二十九：测定空气中的声速
+  31: 'hysteresis-loop',          // 实验三十一/三十三：用示波器观测动态磁滞回线
   32: 'hall-effect',              // 实验三十二：霍尔效应
   33: 'hysteresis-loop',          // 实验三十三：用示波器观测动态磁滞回线
   35: 'hysteresis-loop',          // 别名/目录编号兼容
   36: 'michelson',                // 实验三十六：迈克耳孙干涉仪
+  37: 'fraunhofer-diffraction',   // 培养大纲实验三十七：单缝和圆孔的夫琅禾费衍射
+  41: 'millikan-oil-drop',        // 实验四十一/四十五：用密立根油滴法测定电子电荷
+  43: 'photoelectric-planck',     // 实验四十三/四十六：用光电效应法测定普朗克常量
   44: 'holography',               // 实验四十四/四十九：全息照相
-  45: 'optical-fiber',            // 实验四十五/五十八：光纤传输技术
-  46: 'photoelectric-planck',     // 实验四十六/四十八：用光电效应法测定普朗克常量
+  45: 'millikan-oil-drop',        // 实验四十五：用密立根油滴法测定电子电荷
+  46: 'photoelectric-planck',     // 实验四十六：用光电效应法测定普朗克常量
   47: 'millikan-oil-drop',        // 实验四十七：用密立根油滴法测定电子电荷
   48: 'photoelectric-planck',
   49: 'holography',
@@ -105,12 +115,13 @@ export const SEMESTER_13_EXPERIMENTS: SemesterExperiment[] = [
     bookPage: 179,
     pdfPage: 194,
     category: '力热',
-    status: 'extracted',
-    statusText: '教材高清切片已提取 (薪火暂缺)',
-    badgeColor: 'purple',
-    description: '培养大纲“实验八”。利用平板热源的准稳态导热微分方程，通过热电偶测量温差电动势随时间线性升温斜率，测定绝热不良材料热物性。',
-    fireworksPath: '教材 p.179 针对性提取 (extract_pipeline 已完成切片与参数逆向)',
-    isOnline: false,
+    status: 'online',
+    statusText: '已上线可交互 (支持 B5 导出)',
+    badgeColor: 'emerald',
+    description: '实验二十八。利用对称平板热源的准稳态导热微分方程，交替测量有机玻璃与橡胶样品温差 ΔT 及中心面温升率 dT/dt，精确测定导热系数 λ 与比热容 c。',
+    fireworksPath: '已根据用户实测满分报告 (有机玻璃+橡胶双样品) 100% 还原适配',
+    pluginId: 'quasi-steady-thermal',
+    isOnline: true,
   },
   {
     index: 3,
@@ -213,12 +224,13 @@ export const SEMESTER_13_EXPERIMENTS: SemesterExperiment[] = [
     bookPage: 160,
     pdfPage: 175,
     category: '光学',
-    status: 'extracted',
-    statusText: '教材高清切片已提取 (薪火暂缺)',
-    badgeColor: 'purple',
-    description: '培养大纲“实验三十七”。用线阵 CCD 或光电二极管精密扫描测量夫琅禾费单缝衍射和圆孔艾里斑光强分布曲线，验证半波带法理论。',
-    fireworksPath: '教材 p.160 针对性提取 (extract_pipeline 已完成切片与参数逆向)',
-    isOnline: false,
+    status: 'online',
+    statusText: '已上线可交互 (支持 B5 导出)',
+    badgeColor: 'emerald',
+    description: '实验二十四。用光电探头与测微目镜精密测量夫琅禾费单缝衍射暗纹位置与圆孔爱里斑直径，最小二乘法线性拟合测定狭缝宽度 a 与圆孔直径 D。',
+    fireworksPath: '教材 p.160 完整适配 (单缝线性回归测缝宽 + 圆孔爱里斑测孔径)',
+    pluginId: 'fraunhofer-diffraction',
+    isOnline: true,
   },
   {
     index: 10,
@@ -228,12 +240,13 @@ export const SEMESTER_13_EXPERIMENTS: SemesterExperiment[] = [
     bookPage: 183,
     pdfPage: 198,
     category: '力热',
-    status: 'extracted',
-    statusText: '教材高清切片已提取 (薪火暂缺)',
-    badgeColor: 'purple',
-    description: '培养大纲“实验十六”。压电陶瓷超声换能器发射与接收超声波，利用驻波共振法与相位比较法分别测定声波波长，计算声速并作温敏修正。',
-    fireworksPath: '教材 p.183 针对性提取 (extract_pipeline 已完成切片与参数逆向)',
-    isOnline: false,
+    status: 'online',
+    statusText: '已上线可交互 (支持 B5 导出)',
+    badgeColor: 'emerald',
+    description: '实验二十九。压电陶瓷超声换能器发射与接收超声波，综合运用极值法、相位比较法（14点最小二乘拟合）、波形移动法测定空气声速及超声波驻波悬浮小球波长。',
+    fireworksPath: '已根据用户实测报告 (极值法+相位法+波形移动法+超声悬浮) 100% 还原适配',
+    pluginId: 'sound-velocity',
+    isOnline: true,
   },
   {
     index: 11,

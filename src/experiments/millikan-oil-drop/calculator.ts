@@ -145,6 +145,7 @@ export function calculateMillikanOilDropData(
 
   // 电荷量子化线性回归: q = e * n
   const fitQuantization = linearRegression(quantizationPoints, { forceOrigin: true });
+  const fitDispersal = eDispersalPoints.length >= 2 ? linearRegression(eDispersalPoints) : fitQuantization;
 
   // 4. 拟合图表生成
   const plots: PlotDefinition[] = [
@@ -161,6 +162,7 @@ export function calculateMillikanOilDropData(
         intercept: 0,
         rSquared: fitQuantization.rSquared,
         r: fitQuantization.r,
+        rmse: fitQuantization.rmse,
         formulaText: `q = ${fitQuantization.slope.toFixed(3)} × 10^{-19} n (R² = ${fitQuantization.rSquared.toFixed(4)})`,
       },
       showGrid: true,
@@ -174,11 +176,12 @@ export function calculateMillikanOilDropData(
       yUnit: '×10^{-19} C',
       points: eDispersalPoints,
       fitLine: {
-        slope: 0,
-        intercept: eStd * 1e19,
+        slope: fitDispersal.slope,
+        intercept: fitDispersal.intercept,
         rSquared: 1.0,
         r: 1.0,
-        formulaText: `e_0 = ${(eStd * 1e19).toFixed(3)} × 10^{-19} C (公认理论标准值)`,
+        rmse: fitDispersal.rmse,
+        formulaText: `e_bar = ${(eAvg * 1e19).toFixed(3)} × 10^{-19} C (e0 = ${(eStd * 1e19).toFixed(3)})`,
       },
       showGrid: true,
     },

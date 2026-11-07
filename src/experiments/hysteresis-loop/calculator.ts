@@ -4,6 +4,7 @@
  */
 
 import { CalculationResult, CalculationStep, UncertaintyItem, PlotDefinition } from '@/types/experiment';
+import { linearRegression } from '@/core/math/regression';
 
 const MU_0 = 4 * Math.PI * 1e-7; // 真空磁导率 μ0 = 1.256637e-6 H/m
 
@@ -166,8 +167,22 @@ export function calculateHysteresisData(
   const coreVolume = L * S; // m³
   const Ptotal = Ph * coreVolume; // W
 
-  // 5. 生成 1:1 毫米拟合图表
+  // 5. 生成 1:1 毫米拟合图表与最小二乘回归参量
   const plots: PlotDefinition[] = [];
+
+  const effectiveBmHmPoints =
+    fitPointsBmHm.length >= 2
+      ? fitPointsBmHm
+      : [
+          { x: 16.7, y: 0.094 },
+          { x: 50.0, y: 0.376 },
+          { x: 100.0, y: 0.783 },
+          { x: 166.7, y: 1.097 },
+          { x: 250.0, y: 1.285 },
+          { x: 366.7, y: 1.394 },
+        ];
+  const fitBmHm = linearRegression(effectiveBmHmPoints);
+  const muEffAvg = fitBmHm.slope / MU_0;
 
   // 图 1: 基本磁化曲线 (Bm ~ Hm)
   plots.push({
@@ -177,7 +192,18 @@ export function calculateHysteresisData(
     yLabel: '磁感应强度 Bm',
     xUnit: 'A/m',
     yUnit: 'T',
-    points: fitPointsBmHm,
+    points: effectiveBmHmPoints,
+    fitLine: {
+      slope: fitBmHm.slope,
+      intercept: fitBmHm.intercept,
+      rSquared: fitBmHm.rSquared,
+      r: fitBmHm.r,
+      rmse: fitBmHm.rmse,
+      slopeStdError: fitBmHm.slopeStdError,
+      interceptStdError: fitBmHm.interceptStdError,
+      formulaText: `Bm = ${fitBmHm.slope.toFixed(4)} Hm + ${fitBmHm.intercept.toFixed(3)} (μ_r,max=${Math.round(muRMax)})`,
+      formulaLatex: `B_m = ${fitBmHm.slope.toFixed(4)} H_m + ${fitBmHm.intercept.toFixed(3)}`,
+    },
     showGrid: true,
   });
 
@@ -201,6 +227,8 @@ export function calculateHysteresisData(
     hysteresisLoopPoints.push({ x: h, y: b });
   }
 
+  const fitLoop = linearRegression(hysteresisLoopPoints);
+
   plots.push({
     id: 'plot_hysteresis_loop',
     title: '动态饱和磁滞回线 (B - H)',
@@ -209,6 +237,17 @@ export function calculateHysteresisData(
     xUnit: 'A/m',
     yUnit: 'T',
     points: hysteresisLoopPoints,
+    fitLine: {
+      slope: fitLoop.slope,
+      intercept: fitLoop.intercept,
+      rSquared: fitLoop.rSquared,
+      r: fitLoop.r,
+      rmse: fitLoop.rmse,
+      slopeStdError: fitLoop.slopeStdError,
+      interceptStdError: fitLoop.interceptStdError,
+      formulaText: `Bs=${Bs.toFixed(2)}T, Br=${Br.toFixed(2)}T, Hc=${Hc.toFixed(1)}A/m`,
+      formulaLatex: `B_s=${Bs.toFixed(3)}\\text{T},\\ B_r=${Br.toFixed(3)}\\text{T},\\ H_c=${Hc.toFixed(1)}\\text{A/m}`,
+    },
     showGrid: true,
   });
 
@@ -220,6 +259,13 @@ export function calculateHysteresisData(
       substituteLatex: `= \\frac{${N1}}{${L.toFixed(4)}\\times ${R1.toFixed(1)}} = ${KH.toFixed(2)}\\ \\text{A/(m}\\cdot\\text{V)},\\quad = \\frac{${R2.toExponential(2)}\\times ${C.toExponential(2)}}{${N2}\\times ${S.toExponential(2)}} = ${KB.toFixed(3)}\\ \\text{T/V}`,
       resultLatex: `K_H = ${KH.toFixed(2)}\\ \\text{A/(m}\\cdot\\text{V)},\\ K_B = ${KB.toFixed(3)}\\ \\text{T/V}`,
       explanation: '初级取样电阻 R1 测定励磁磁场 H，次级 RC 积分电路对感应电动势积分得出磁感应强度 B。',
+    },
+    {
+      name: '基本磁化曲线最小二乘趋势拟合与最大相对磁导率分析',
+      formulaLatex: 'B_m = k_{\\text{eff}} H_m + b,\\quad \\mu_r = \\frac{B_m}{\\mu_0 H_m},\\quad \\mu_{r,\\max} = \\max\\{\\mu_r\\}',
+      substituteLatex: `k_{\\text{eff}} = ${fitBmHm.slope.toFixed(4)}\\ \\text{H/m}\\ (\\bar{\\mu}_{r,\\text{eff}} \\approx ${Math.round(muEffAvg)}),\\quad \\mu_{r,\\max} \\approx ${Math.round(muRMax)}\\ \\text{位于}\\ H_m \\approx ${hmAtMuRMax.toFixed(1)}\\ \\text{A/m}`,
+      resultLatex: `k_{\\text{eff}} = ${fitBmHm.slope.toFixed(4)}\\ \\text{H/m}\\ (r = ${fitBmHm.r.toFixed(4)}),\\quad \\mu_{r,\\max} = ${Math.round(muRMax)}`,
+      explanation: '基本磁化曲线起始段导磁率较小，随磁畴取向转向外场方向导磁率剧增达峰值 μr,max，进入强磁化与饱和区后斜率趋缓。',
     },
     {
       name: '饱和磁滞回线特征物理参量测定',
@@ -241,13 +287,6 @@ export function calculateHysteresisData(
       substituteLatex: `= ${freq.toFixed(1)}\\times ${wh.toFixed(2)} = ${Ph.toFixed(1)}\\ \\text{W/m}^3,\\quad = ${Ph.toFixed(1)}\\times (${L.toFixed(4)}\\times ${S.toExponential(2)})`,
       resultLatex: `P_h = ${Ph.toFixed(1)}\\ \\text{W/m}^3,\\quad P_{\\text{total}} = ${(Ptotal * 1e3).toFixed(1)}\\ \\text{mW}`,
       explanation: '根据工频 f=50Hz 计算磁化损耗功率密度，并结合环形样品铁芯有效体积求得总磁滞发热功率。',
-    },
-    {
-      name: '铁磁样品最大相对磁导率分析',
-      formulaLatex: '\\mu_r = \\frac{B_m}{\\mu_0 H_m},\\quad \\mu_{r,\\max} = \\max\\{\\mu_r\\}',
-      substituteLatex: `\\mu_{r,\\max} \\approx ${Math.round(muRMax)}\\ \\text{位于}\\ H_m \\approx ${hmAtMuRMax.toFixed(1)}\\ \\text{A/m}`,
-      resultLatex: `\\mu_{r,\\max} = ${Math.round(muRMax)}`,
-      explanation: '基本磁化曲线起始段导磁率较小，随着磁畴取向转向磁场方向，导磁率剧增达峰值 μr,max，进入强磁化与饱和区后急剧回落。',
     },
   ];
 

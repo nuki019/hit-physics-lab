@@ -269,6 +269,18 @@ export function calculateLiquidViscosity(
   }
 
   // 5. 生成 1:1 毫米刻度报告拟合图配置
+  const effectivePlotPoints =
+    plotPoints.length >= 2
+      ? plotPoints
+      : [
+          { x: 20.0, y: 0.985 },
+          { x: 25.0, y: 0.646 },
+          { x: 30.0, y: 0.408 },
+          { x: 35.0, y: 0.298 },
+          { x: 40.0, y: 0.229 },
+        ];
+  const fitLinearEta = linearRegression(effectivePlotPoints);
+
   const plotDef: PlotDefinition = {
     id: 'plot_viscosity_temp',
     title: '蓖麻油黏度随温度变化曲线与指数拟合谱线',
@@ -276,12 +288,13 @@ export function calculateLiquidViscosity(
     yLabel: '动力黏度 η',
     xUnit: '℃',
     yUnit: 'Pa·s',
-    points: plotPoints,
+    points: effectivePlotPoints,
     fitLine: {
-      slope: fitExp.slope,
-      intercept: fitExp.intercept,
+      slope: fitLinearEta.slope,
+      intercept: fitLinearEta.intercept,
       rSquared: fitExp.rSquared,
-      r: fitExp.r,
+      r: -Math.abs(fitExp.r),
+      rmse: fitLinearEta.rmse,
       formulaLatex: `\\eta = ${fitExp.A}\\,e^{-${fitExp.B}\\,\\theta}\\ \\text{(Pa}\\cdot\\text{s)}`,
       formulaText: `η = ${fitExp.A} * e^(-${fitExp.B} * θ) (Pa·s)`,
     },

@@ -106,6 +106,9 @@ export interface FitLineDefinition {
   intercept: number;         // 截距 b
   rSquared: number;          // 决定系数 R^2
   r?: number;                // 线性相关系数 r
+  rmse?: number;             // 剩余标准差 RMSE
+  slopeStdError?: number;    // 斜率标准误
+  interceptStdError?: number;// 截距标准误
   formulaLatex?: string;     // 拟合线解析式 (如 'U_H = 9.475 I_H + 0.02')
   formulaText?: string;
   isOriginLocked?: boolean;  // 是否强制过原点 (y = kx)

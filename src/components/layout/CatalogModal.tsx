@@ -152,11 +152,11 @@ export const CatalogModal: React.FC<CatalogModalProps> = ({
             </div>
             <div className="flex items-center gap-1.5 text-emerald-700">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>已上线交互: <strong>11 门</strong> (学期 10 门 + 实验五黏度)</span>
+              <span>已上线交互: <strong>14 门</strong> (本学期 13 门 100% 全覆盖 + 实验五黏度)</span>
             </div>
             <div className="flex items-center gap-1.5 text-purple-700">
               <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-              <span>教材切片已提取: <strong>3 门</strong> (准稳态/夫琅禾费/声速)</span>
+              <span>实测报告还原: <strong>100%</strong> (准稳态/声速/夫琅禾费等全量接入)</span>
             </div>
           </div>
 
@@ -267,7 +267,7 @@ export const CatalogModal: React.FC<CatalogModalProps> = ({
               <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-start gap-2.5">
                 <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
-                  <strong>本学期选课与教学要求：</strong> 用户所列 13 门大物实验中，已由平台原生落地 <strong>10 门交互式实验</strong>（动态磁滞回线、探究乐音、光的等厚干涉、自组显微镜望远镜、霍尔效应、迈克耳孙干涉仪、密立根油滴、光电效应普朗克、全息照相、光纤传输技术），加上重点扩展<strong>实验五（液体黏度的测定）</strong>共计 <strong>11 门完整交互式实验</strong>，支持完整数据录入、实时拟合与 B5 双页剪贴版导出！另外 <strong>3 门</strong>（准稳态法、夫琅禾费衍射、空气声速）薪火暂缺，已由平台轻量教材提取脚本 <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-800 font-mono">scripts/extract_pipeline.py</code> 成功靶向提取教材高清切片与原理参数。
+                  <strong>本学期选课与教学要求：</strong> 用户所列 13 门大物实验现已 <strong>100% 全部上线可交互</strong>（动态磁滞回线、准稳态法测不良导体、探究乐音、光的等厚干涉、自组显微镜望远镜、霍尔效应、迈克耳孙干涉仪、密立根油滴、夫琅禾费衍射、测定空气中的声速、光电效应普朗克、全息照相、光纤传输技术），加上重点扩展<strong>实验五（液体黏度的测定）</strong>共计 <strong>14 门完整交互式实验</strong>，均支持完整数据录入、实时拟合、手机端保存/跨端同步与 B5 双页剪贴版导出！
                 </div>
               </div>
 
@@ -495,7 +495,7 @@ export const CatalogModal: React.FC<CatalogModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>
-              已接入核心微内核 <strong>11 门完整实验插件</strong>: 霍尔效应、迈克耳逊、等厚干涉、液体黏度、磁滞回线、探究乐音、显微镜望远镜、密立根油滴、光电效应、全息照相、光纤传输
+              已接入核心微内核 <strong>14 门完整实验插件 (本学期 13 门 100% 全覆盖)</strong>: 霍尔效应、迈克耳孙、等厚干涉、液体黏度、磁滞回线、准稳态法、探究乐音、显微镜望远镜、密立根油滴、夫琅禾费衍射、空气声速、光电效应、全息照相、光纤传输
             </span>
           </div>
 

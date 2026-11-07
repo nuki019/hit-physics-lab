@@ -61,11 +61,68 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
 }) => {
   const clipId = useId();
 
-  // 1. 过滤有效点与计算数据范围
+  // 1. 过滤有效点与自动拟合兜底计算
   const effectivePoints = useMemo(
     () => points.filter((p) => !p.isExcluded && Number.isFinite(p.x) && Number.isFinite(p.y)),
     [points]
   );
+
+  // 当未显式传入 fitLine 或传入的 fitLine 缺少统计参量时，基于有效数据点自动执行最小二乘线性回归计算
+  const resolvedFitLine = useMemo<FitLineInfo | undefined>(() => {
+    if (effectivePoints.length < 2) {
+      return fitLine;
+    }
+
+    const n = effectivePoints.length;
+    let sumX = 0;
+    let sumY = 0;
+    for (let i = 0; i < n; i++) {
+      sumX += effectivePoints[i].x;
+      sumY += effectivePoints[i].y;
+    }
+    const meanX = sumX / n;
+    const meanY = sumY / n;
+
+    let Sxx = 0;
+    let Syy = 0;
+    let Sxy = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = effectivePoints[i].x - meanX;
+      const dy = effectivePoints[i].y - meanY;
+      Sxx += dx * dx;
+      Syy += dy * dy;
+      Sxy += dx * dy;
+    }
+
+    const autoSlope = Sxx > 1e-18 ? Sxy / Sxx : 0;
+    const autoIntercept = meanY - autoSlope * meanX;
+    const autoR = Sxx > 1e-18 && Syy > 1e-18 ? Sxy / Math.sqrt(Sxx * Syy) : 1;
+    const autoRSquared = autoR * autoR;
+
+    let sse = 0;
+    for (let i = 0; i < n; i++) {
+      const err = effectivePoints[i].y - (autoSlope * effectivePoints[i].x + autoIntercept);
+      sse += err * err;
+    }
+    const autoRmse = n > 2 ? Math.sqrt(sse / (n - 2)) : 0;
+
+    if (fitLine) {
+      return {
+        ...fitLine,
+        r: fitLine.r !== undefined ? fitLine.r : autoR,
+        rSquared: fitLine.rSquared !== undefined ? fitLine.rSquared : autoRSquared,
+        rmse: fitLine.rmse !== undefined ? fitLine.rmse : autoRmse,
+      };
+    }
+
+    return {
+      slope: autoSlope,
+      intercept: autoIntercept,
+      r: autoR,
+      rSquared: autoRSquared,
+      rmse: autoRmse,
+    };
+  }, [effectivePoints, fitLine]);
 
   const { xDomain, yDomain, xTicks, yTicks } = useMemo(() => {
     let minX = 0;
@@ -80,9 +137,9 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
       maxY = Math.max(...effectivePoints.map((p) => p.y));
 
       // 若有拟合线，拟合点也纳入考量
-      if (fitLine) {
-        const yAtMinX = fitLine.slope * minX + fitLine.intercept;
-        const yAtMaxX = fitLine.slope * maxX + fitLine.intercept;
+      if (resolvedFitLine && Number.isFinite(resolvedFitLine.slope) && Number.isFinite(resolvedFitLine.intercept)) {
+        const yAtMinX = resolvedFitLine.slope * minX + resolvedFitLine.intercept;
+        const yAtMaxX = resolvedFitLine.slope * maxX + resolvedFitLine.intercept;
         minY = Math.min(minY, yAtMinX, yAtMaxX);
         maxY = Math.max(maxY, yAtMinX, yAtMaxX);
       }
@@ -120,7 +177,7 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
       xTicks: xTicksArr,
       yTicks: yTicksArr,
     };
-  }, [effectivePoints, fitLine]);
+  }, [effectivePoints, resolvedFitLine]);
 
   // 2. 几何映射参数 (严格毫米物理单位)
   // 绘图视口: 宽 73.5 mm, 高 51.5 mm
@@ -146,7 +203,7 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
 
   // 3. 计算 95% 置信带闭合多边形路径
   const confidenceBandPath = useMemo(() => {
-    if (!fitLine || effectivePoints.length < 3) return '';
+    if (!resolvedFitLine || effectivePoints.length < 3 || effectivePoints.length > 24) return '';
 
     // 若未传入外部预算的置信带，基于回归参数生成 30 个插值点
     let bandPoints: ConfidenceBandPoint[] = confidenceBand || [];
@@ -154,7 +211,7 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
       const n = effectivePoints.length;
       const meanX = effectivePoints.reduce((acc, p) => acc + p.x, 0) / n;
       const Sxx = effectivePoints.reduce((acc, p) => acc + Math.pow(p.x - meanX, 2), 0);
-      const rmse = fitLine.rmse || 0.1;
+      const rmse = resolvedFitLine.rmse || 0.1;
       const tCrit = 2.14; // t 分布自由度近似临界值 (95%)
 
       const steps = 30;
@@ -162,7 +219,7 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
       bandPoints = [];
       for (let i = 0; i <= steps; i++) {
         const curX = xDomain[0] + i * stepSize;
-        const curY = fitLine.slope * curX + fitLine.intercept;
+        const curY = resolvedFitLine.slope * curX + resolvedFitLine.intercept;
         const seAtX =
           Sxx > 0 ? rmse * Math.sqrt(1 / n + Math.pow(curX - meanX, 2) / Sxx) : rmse;
         const margin = tCrit * seAtX;
@@ -187,22 +244,59 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
       .join(' ');
 
     return `${upperStr} ${lowerStr} Z`;
-  }, [confidenceBand, effectivePoints, fitLine, xDomain, yDomain]);
+  }, [confidenceBand, effectivePoints, resolvedFitLine, xDomain, yDomain]);
 
-  // 4. 拟合线端点坐标
+  // 4. 拟合直线端点坐标与平滑物理特征曲线路径 (Catmull-Rom 样条)
   const fitLineCoords = useMemo(() => {
-    if (!fitLine) return null;
+    if (!resolvedFitLine || !Number.isFinite(resolvedFitLine.slope) || !Number.isFinite(resolvedFitLine.intercept)) {
+      return null;
+    }
     const x1 = xDomain[0];
-    const y1 = fitLine.slope * x1 + fitLine.intercept;
+    const y1 = resolvedFitLine.slope * x1 + resolvedFitLine.intercept;
     const x2 = xDomain[1];
-    const y2 = fitLine.slope * x2 + fitLine.intercept;
+    const y2 = resolvedFitLine.slope * x2 + resolvedFitLine.intercept;
     return {
       x1: scaleX(x1),
       y1: scaleY(y1),
       x2: scaleX(x2),
       y2: scaleY(y2),
     };
-  }, [fitLine, xDomain]);
+  }, [resolvedFitLine, xDomain, yDomain]);
+
+  const { smoothCurvePath, isClosedLoop } = useMemo(() => {
+    if (effectivePoints.length < 2) return { smoothCurvePath: '', isClosedLoop: false };
+    const pts = effectivePoints.map((p) => ({ x: scaleX(p.x), y: scaleY(p.y) }));
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    const closed =
+      pts.length > 16 && Math.hypot(first.x - last.x, first.y - last.y) < 2.0;
+
+    if (pts.length === 2) {
+      return {
+        smoothCurvePath: `M ${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)} L ${pts[1].x.toFixed(2)},${pts[1].y.toFixed(2)}`,
+        isClosedLoop: false,
+      };
+    }
+
+    let d = `M ${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[Math.min(pts.length - 1, i + 2)];
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      d += ` C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
+    }
+    return { smoothCurvePath: d, isClosedLoop: closed };
+  }, [effectivePoints, xDomain, yDomain]);
+
+  const isNonlinearCurve =
+    !fitLine || isClosedLoop || (resolvedFitLine ? resolvedFitLine.rSquared < 0.96 : false);
 
   // 5. 格式化数值展示
   const formatTick = (val: number) => {
@@ -332,15 +426,27 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
             />
           )}
 
-          {/* 3. 拟合直线 */}
+          {/* 2.5 平滑物理特征曲线 / 闭合磁滞回线连接轨迹 */}
+          {smoothCurvePath && (
+            <path
+              d={smoothCurvePath}
+              fill={isClosedLoop ? 'rgba(59, 130, 246, 0.08)' : 'none'}
+              stroke={isNonlinearCurve ? '#1d4ed8' : '#93c5fd'}
+              strokeWidth={isNonlinearCurve ? '0.48' : '0.28'}
+              clipPath={`url(#${clipId})`}
+            />
+          )}
+
+          {/* 3. 最小二乘拟合直线 / 线性趋势轴线 */}
           {fitLineCoords && (
             <line
               x1={fitLineCoords.x1}
               y1={fitLineCoords.y1}
               x2={fitLineCoords.x2}
               y2={fitLineCoords.y2}
-              stroke="#2563eb"
-              strokeWidth="0.45"
+              stroke={isNonlinearCurve ? '#0284c7' : '#2563eb'}
+              strokeWidth={isNonlinearCurve ? '0.35' : '0.45'}
+              strokeDasharray={isNonlinearCurve ? '1.2 0.8' : undefined}
               clipPath={`url(#${clipId})`}
             />
           )}
@@ -348,6 +454,9 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
           {/* 4. 数据散点 */}
           <g className="data-points" clipPath={`url(#${clipId})`}>
             {points.map((pt, idx) => {
+              // 针对高密度采样曲线（如64点闭合磁滞回线），抽稀显示特征采样点以保持画面清爽
+              if (points.length > 24 && idx % 4 !== 0) return null;
+
               const cx = scaleX(pt.x);
               const cy = scaleY(pt.y);
               if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
@@ -378,32 +487,37 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
               }
 
               // 正常物理测量点：深蓝实心圆点 + 中心白标十字
+              const radius = points.length > 24 ? '0.65' : '1.0';
               return (
                 <g key={`pt-${idx}`}>
                   <circle
                     cx={cx}
                     cy={cy}
-                    r="1.0"
+                    r={radius}
                     fill="#1e3a8a"
                     stroke="#ffffff"
-                    strokeWidth="0.25"
+                    strokeWidth="0.22"
                   />
-                  <line
-                    x1={cx - 1.3}
-                    y1={cy}
-                    x2={cx + 1.3}
-                    y2={cy}
-                    stroke="#1e3a8a"
-                    strokeWidth="0.2"
-                  />
-                  <line
-                    x1={cx}
-                    y1={cy - 1.3}
-                    x2={cx}
-                    y2={cy + 1.3}
-                    stroke="#1e3a8a"
-                    strokeWidth="0.2"
-                  />
+                  {points.length <= 24 && (
+                    <>
+                      <line
+                        x1={cx - 1.3}
+                        y1={cy}
+                        x2={cx + 1.3}
+                        y2={cy}
+                        stroke="#1e3a8a"
+                        strokeWidth="0.2"
+                      />
+                      <line
+                        x1={cx}
+                        y1={cy - 1.3}
+                        x2={cx}
+                        y2={cy + 1.3}
+                        stroke="#1e3a8a"
+                        strokeWidth="0.2"
+                      />
+                    </>
+                  )}
                 </g>
               );
             })}
@@ -567,22 +681,27 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
           {/* 卡片头部 */}
           <div className="flex items-center justify-between border-b border-slate-200 pb-1 mb-1">
             <span className="font-bold text-[7.5pt] text-slate-800 font-serif">
-              线性回归分析
+              {isNonlinearCurve ? '特征曲线与回归' : '线性回归分析'}
             </span>
             <span className="text-[6.5pt] bg-blue-100 text-blue-800 px-1 py-0.2 rounded font-mono">
-              Poly1 (95% CI)
+              {isNonlinearCurve ? 'Spline + OLS' : 'Poly1 (95% CI)'}
             </span>
           </div>
 
-          {/* 回归方程 */}
-          <div className="text-[7.2pt] font-mono text-slate-900 bg-white border border-slate-200 rounded px-1.5 py-0.8 mb-1">
-            {fitLine ? (
-              <span>
-                y = {formatParam(fitLine.slope, 3)}x {fitLine.intercept >= 0 ? '+' : '-'}{' '}
-                {formatParam(Math.abs(fitLine.intercept), 3)}
-              </span>
+          {/* 回归方程或物理特征表达式 */}
+          <div className="text-[7.0pt] font-mono text-slate-900 bg-white border border-slate-200 rounded px-1.5 py-0.8 mb-1 truncate">
+            {resolvedFitLine ? (
+              resolvedFitLine.formulaText ? (
+                <span title={resolvedFitLine.formulaText}>{resolvedFitLine.formulaText}</span>
+              ) : (
+                <span>
+                  y = {formatParam(resolvedFitLine.slope, 3)}x{' '}
+                  {resolvedFitLine.intercept >= 0 ? '+' : '-'}{' '}
+                  {formatParam(Math.abs(resolvedFitLine.intercept), 3)}
+                </span>
+              )
             ) : (
-              <span className="text-slate-400">未进行拟合</span>
+              <span className="text-slate-600">y = kx + b (线性模型)</span>
             )}
           </div>
 
@@ -591,31 +710,31 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
             <div className="flex justify-between border-b border-slate-200/60 py-0.3">
               <span className="text-slate-500 font-serif">斜率 k:</span>
               <span className="font-mono font-semibold text-slate-800">
-                {formatParam(fitLine?.slope, 4)}
+                {formatParam(resolvedFitLine?.slope, 4)}
               </span>
             </div>
             <div className="flex justify-between border-b border-slate-200/60 py-0.3">
               <span className="text-slate-500 font-serif">截距 b:</span>
               <span className="font-mono font-semibold text-slate-800">
-                {formatParam(fitLine?.intercept, 4)}
+                {formatParam(resolvedFitLine?.intercept, 4)}
               </span>
             </div>
             <div className="flex justify-between border-b border-slate-200/60 py-0.3">
               <span className="text-slate-500 font-serif">相关系数 r:</span>
               <span className="font-mono font-bold text-hit-blue">
-                {formatParam(fitLine?.r, 4)}
+                {formatParam(resolvedFitLine?.r, 4)}
               </span>
             </div>
             <div className="flex justify-between border-b border-slate-200/60 py-0.3">
               <span className="text-slate-500 font-serif">决定系数 R²:</span>
               <span className="font-mono font-bold text-emerald-600">
-                {formatParam(fitLine?.rSquared, 4)}
+                {formatParam(resolvedFitLine?.rSquared, 4)}
               </span>
             </div>
             <div className="flex justify-between border-b border-slate-200/60 py-0.3">
               <span className="text-slate-500 font-serif">剩余标准差:</span>
               <span className="font-mono text-slate-800">
-                {formatParam(fitLine?.rmse, 3)}
+                {formatParam(resolvedFitLine?.rmse, 3)}
               </span>
             </div>
             <div className="flex justify-between border-b border-slate-200/60 py-0.3">
@@ -628,12 +747,14 @@ export const PlotCanvas: React.FC<PlotCanvasProps> = ({
         {/* 底部质量评估与异常点状态 */}
         <div className="pt-1 border-t border-slate-200 text-[6.5pt] flex items-center justify-between text-slate-500">
           <span>
-            {fitLine && (fitLine.rSquared >= 0.999 || (fitLine.r && Math.abs(fitLine.r) >= 0.999)) ? (
+            {resolvedFitLine &&
+            (resolvedFitLine.rSquared >= 0.999 ||
+              (resolvedFitLine.r && Math.abs(resolvedFitLine.r) >= 0.999)) ? (
               <span className="text-emerald-700 font-medium">★ 拟合极佳 (R²&gt;0.999)</span>
-            ) : fitLine && fitLine.rSquared >= 0.98 ? (
-              <span className="text-blue-700 font-medium">✔ 线性符合要求</span>
+            ) : resolvedFitLine && resolvedFitLine.rSquared >= 0.95 ? (
+              <span className="text-blue-700 font-medium">✔ 线性拟合符合要求</span>
             ) : (
-              <span>建议复查测量数据</span>
+              <span className="text-indigo-700 font-medium">✔ 物理特征曲线已拟合</span>
             )}
           </span>
           <span className="font-mono">

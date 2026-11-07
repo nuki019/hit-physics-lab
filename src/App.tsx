@@ -7,6 +7,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Navbar, ExperimentOption } from '@/components/layout/Navbar';
 import { HelpModal } from '@/components/layout/HelpModal';
 import { CatalogModal } from '@/components/layout/CatalogModal';
+import { SaveModal } from '@/components/layout/SaveModal';
 import { StorageManager } from '@/core/storage/storageManager';
 import { DataTable } from '@/components/data-table/DataTable';
 import { PrintContainer } from '@/components/b5-report/PrintContainer';
@@ -32,6 +33,9 @@ import {
   Layers,
   Filter,
   BarChart3,
+  Save,
+  Share2,
+  Check,
 } from 'lucide-react';
 
 // 导航栏候选实验清单 (直接映射已注册插件中心)
@@ -54,6 +58,12 @@ export const App: React.FC = () => {
 
   // 全书 65 实验目录与本学期规划模态框
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+
+  // 手机端数据保存与跨设备传电脑模态框
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+
+  // 立即保存浮动提示条
+  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   // 左侧面板选项卡: 0=数据录入, 1=分步计算, 2=思考题解答
   const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
@@ -150,6 +160,85 @@ export const App: React.FC = () => {
     setActiveExpId(id);
     StorageManager.setActiveExperimentId(id);
   };
+
+  // 显示浮动保存提示
+  const triggerToast = (msg: string) => {
+    setSaveToast(msg);
+    window.setTimeout(() => {
+      setSaveToast((prev) => (prev === msg ? null : prev));
+    }, 3200);
+  };
+
+  // 一键立即保存（写入 LocalStorage 并生成手机端时间戳存档快照）
+  const handleQuickSave = () => {
+    const customNotes: Record<string, string> = {
+      conclusion: conclusionText,
+    };
+    Object.entries(questionAnswers).forEach(([qId, ans]) => {
+      customNotes[`q_${qId}`] = ans;
+    });
+    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    StorageManager.saveSnapshot(
+      activeExpId,
+      `手动保存 (${timeStr})`,
+      tablesData,
+      customNotes
+    );
+    triggerToast(`✓ 已于 ${timeStr} 保存至手机本地缓存与历史存档点`);
+  };
+
+  // 从存档快照、JSON 文件或跨端同步口令恢复数据
+  const handleRestorePayload = (payload: {
+    experimentId?: string;
+    tables: Record<string, any[][]>;
+    customNotes: Record<string, string>;
+  }) => {
+    const targetExpId =
+      payload.experimentId && registry.get(payload.experimentId)
+        ? payload.experimentId
+        : activeExpId;
+    const targetPlugin = registry.get(targetExpId) || currentPlugin;
+
+    StorageManager.saveExperimentDataSync(targetExpId, {
+      tables: payload.tables,
+      customNotes: payload.customNotes,
+    });
+
+    if (targetExpId !== activeExpId) {
+      setActiveExpId(targetExpId);
+      StorageManager.setActiveExperimentId(targetExpId);
+    }
+
+    setTablesData(payload.tables);
+    if (payload.customNotes?.conclusion) {
+      setConclusionText(payload.customNotes.conclusion);
+    }
+    const restoredQA: Record<string | number, string> = {};
+    targetPlugin.questions.forEach((q) => {
+      restoredQA[q.id] = payload.customNotes?.[`q_${q.id}`] || q.standardAnswer;
+    });
+    setQuestionAnswers(restoredQA);
+    triggerToast(`✓ 已成功恢复「${targetPlugin.name}」的实验数据`);
+  };
+
+  // 检查 URL Hash 是否带有手机端传过来的 #sync=... 跨设备同步载荷
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#sync=')) {
+      const decoded = StorageManager.decodeShareInput(window.location.hash);
+      if (decoded) {
+        handleRestorePayload({
+          experimentId: decoded.experimentId,
+          tables: decoded.tables,
+          customNotes: decoded.customNotes || {},
+        });
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search
+        );
+      }
+    }
+  }, []);
 
   // 单元格数据变更 (自动保存并持久化)
   const handleTableChange = (tableId: string, updatedRows: any[]) => {
@@ -297,7 +386,7 @@ export const App: React.FC = () => {
   const isConclusionTooLong = conclusionCharCount > 350;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 font-sans">
+    <div className="min-h-screen flex flex-col bg-slate-100 font-sans pb-14 lg:pb-0">
       {/* 顶部统一导航栏 */}
       <Navbar
         experiments={EXPERIMENTS}
@@ -308,10 +397,32 @@ export const App: React.FC = () => {
         onPrint={() => window.print()}
         onOpenHelp={() => setIsHelpOpen(true)}
         onOpenCatalog={() => setIsCatalogOpen(true)}
+        onQuickSave={handleQuickSave}
+        onOpenSaveModal={() => setIsSaveModalOpen(true)}
       />
+
+      {/* 手机/电脑一键保存浮动通知 */}
+      {saveToast && (
+        <div className="no-print fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg border border-emerald-400 flex items-center gap-2">
+          <Check className="w-4 h-4 text-amber-300 shrink-0" />
+          <span>{saveToast}</span>
+        </div>
+      )}
 
       {/* 帮助指引模态框 */}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      {/* 手机端存档与跨端传电脑模态框 */}
+      <SaveModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        experimentId={activeExpId}
+        experimentName={currentPlugin.name}
+        tablesData={tablesData}
+        conclusionText={conclusionText}
+        questionAnswers={questionAnswers}
+        onRestorePayload={handleRestorePayload}
+      />
 
       {/* 全书 65 实验目录与本学期规划模态框 */}
       <CatalogModal
@@ -837,6 +948,33 @@ export const App: React.FC = () => {
           </div>
         </section>
       </main>
+
+      {/* 手机端专属底部快捷保存与操作悬浮栏 (lg 屏幕以上自动隐藏，打印隐藏) */}
+      <div className="no-print lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-300 shadow-lg px-3 py-2 flex items-center justify-around gap-2">
+        <button
+          onClick={handleQuickSave}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 active:bg-emerald-700 text-white text-xs font-bold py-2.5 px-3 rounded-lg shadow-xs"
+        >
+          <Save className="w-4 h-4" />
+          <span>立即保存</span>
+        </button>
+
+        <button
+          onClick={() => setIsSaveModalOpen(true)}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-hit-navy active:bg-slate-800 text-amber-300 text-xs font-bold py-2.5 px-3 rounded-lg shadow-xs"
+        >
+          <Share2 className="w-4 h-4" />
+          <span>存档 / 传电脑</span>
+        </button>
+
+        <button
+          onClick={() => window.print()}
+          className="flex items-center justify-center gap-1 bg-hit-blue active:bg-blue-700 text-white text-xs font-bold py-2.5 px-3 rounded-lg shadow-xs"
+        >
+          <Printer className="w-4 h-4" />
+          <span>导出PDF</span>
+        </button>
+      </div>
     </div>
   );
 };

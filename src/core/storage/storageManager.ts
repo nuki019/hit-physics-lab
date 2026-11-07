@@ -1,12 +1,31 @@
 /**
- * LocalStorage 数据持久化状态机
+ * LocalStorage 数据持久化状态机（含手机端多版本快照、JSON 导出导入与跨端同步口令）
  * 文件路径: src/core/storage/storageManager.ts
  */
 
 import { ExperimentPersistedState } from '@/types/storage';
 
 const STORAGE_PREFIX = 'hit_physics_data_';
+const SNAPSHOT_PREFIX = 'hit_physics_snapshots_';
 const ACTIVE_EXP_KEY = 'hit_physics_active_exp_id';
+
+export interface ExperimentSnapshot {
+  id: string;
+  experimentId: string;
+  label: string;
+  timestamp: number;
+  tables: Record<string, any[][]>;
+  customNotes: Record<string, string>;
+}
+
+export interface SharePayload {
+  magic: 'HIT_PHYSICS_LAB_V1';
+  experimentId: string;
+  experimentName: string;
+  timestamp: number;
+  tables: Record<string, any[][]>;
+  customNotes: Record<string, string>;
+}
 
 const isPlainObject = (v: unknown): v is Record<string, any> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -20,6 +39,13 @@ export class StorageManager {
    */
   public static getKey(experimentId: string): string {
     return `${STORAGE_PREFIX}${experimentId}`;
+  }
+
+  /**
+   * 获取实验快照列表对应的存储键名
+   */
+  public static getSnapshotKey(experimentId: string): string {
+    return `${SNAPSHOT_PREFIX}${experimentId}`;
   }
 
   /**
@@ -96,18 +122,28 @@ export class StorageManager {
     state: Partial<ExperimentPersistedState>
   ): void {
     try {
+      if (this.debounceTimers[experimentId]) {
+        clearTimeout(this.debounceTimers[experimentId]);
+        delete this.debounceTimers[experimentId];
+      }
+      const pending = this.pendingStates[experimentId] || {};
+      delete this.pendingStates[experimentId];
+
       if (typeof window !== 'undefined' && window.localStorage) {
         const current = this.loadExperimentData(experimentId, {});
         const mergedTables = {
           ...(current.tables || {}),
+          ...(pending.tables || {}),
           ...(state.tables || {}),
         };
         const mergedNotes = {
           ...(current.customNotes || {}),
+          ...(pending.customNotes || {}),
           ...(state.customNotes || {}),
         };
         const merged: ExperimentPersistedState = {
           ...current,
+          ...pending,
           ...state,
           tables: mergedTables,
           customNotes: mergedNotes,
@@ -119,6 +155,124 @@ export class StorageManager {
     } catch (e) {
       console.error(`[StorageManager] 持久化写入实验 [${experimentId}] 失败:`, e);
     }
+  }
+
+  /**
+   * 保存手动存档快照 (每个实验最多保留最近 12 个快照)
+   */
+  public static saveSnapshot(
+    experimentId: string,
+    label: string,
+    tables: Record<string, any[][]>,
+    customNotes: Record<string, string>
+  ): ExperimentSnapshot {
+    this.saveExperimentDataSync(experimentId, { tables, customNotes });
+    const now = Date.now();
+    const snapshot: ExperimentSnapshot = {
+      id: `snap_${now}_${Math.random().toString(36).slice(2, 6)}`,
+      experimentId,
+      label: label.trim() || `手机端存档 (${new Date(now).toLocaleTimeString('zh-CN', { hour12: false })})`,
+      timestamp: now,
+      tables,
+      customNotes,
+    };
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const list = this.listSnapshots(experimentId);
+        const updated = [snapshot, ...list].slice(0, 12);
+        localStorage.setItem(this.getSnapshotKey(experimentId), JSON.stringify(updated));
+      }
+    } catch (e) {
+      console.error('[StorageManager] 保存快照失败:', e);
+    }
+    return snapshot;
+  }
+
+  /**
+   * 获取指定实验的所有历史快照
+   */
+  public static listSnapshots(experimentId: string): ExperimentSnapshot[] {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = localStorage.getItem(this.getSnapshotKey(experimentId));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[StorageManager] 读取快照列表失败:', e);
+    }
+    return [];
+  }
+
+  /**
+   * 删除指定快照
+   */
+  public static deleteSnapshot(experimentId: string, snapshotId: string): ExperimentSnapshot[] {
+    const list = this.listSnapshots(experimentId).filter((s) => s.id !== snapshotId);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(this.getSnapshotKey(experimentId), JSON.stringify(list));
+      }
+    } catch (e) {
+      console.error('[StorageManager] 删除快照失败:', e);
+    }
+    return list;
+  }
+
+  /**
+   * 编码跨设备同步口令 (UTF-8 Base64 URL-safe)
+   */
+  public static encodeShareCode(payload: SharePayload): string {
+    const jsonStr = JSON.stringify(payload);
+    const bytes = new TextEncoder().encode(jsonStr);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return 'HITLAB1:' + btoa(binary);
+  }
+
+  /**
+   * 解码跨设备同步口令或 JSON 字符串
+   */
+  public static decodeShareInput(input: string): SharePayload | null {
+    try {
+      const trimmed = input.trim();
+      let code = trimmed;
+
+      // 如果粘贴的是包含 #sync= 的完整链接，提取参数部分
+      const hashIdx = trimmed.indexOf('#sync=');
+      if (hashIdx !== -1) {
+        code = decodeURIComponent(trimmed.slice(hashIdx + 6));
+      }
+
+      if (code.startsWith('HITLAB1:')) {
+        const b64 = code.slice(8);
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const jsonStr = new TextDecoder().decode(bytes);
+        const parsed = JSON.parse(jsonStr) as SharePayload;
+        if (parsed && parsed.magic === 'HIT_PHYSICS_LAB_V1' && isPlainObject(parsed.tables)) {
+          return parsed;
+        }
+      } else {
+        const parsed = JSON.parse(trimmed) as SharePayload;
+        if (parsed && isPlainObject(parsed.tables)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('[StorageManager] 解析同步口令失败:', e);
+    }
+    return null;
   }
 
   /**

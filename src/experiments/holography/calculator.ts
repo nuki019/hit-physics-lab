@@ -4,6 +4,7 @@
  */
 
 import { CalculationResult, CalculationStep, UncertaintyItem, PlotDefinition } from '@/types/experiment';
+import { linearRegression } from '@/core/math/regression';
 
 export interface HolographyProcessedT2Row {
   theta: number;
@@ -250,7 +251,20 @@ export function calculateHolographyData(
   ];
 
   // 8. 矢量拟合图谱定义
-  // 曲线：条纹空间频率随夹角 θ 变化
+  // 曲线：条纹空间频率随夹角 θ 变化及调制度随光强比 K 变化
+  const fitFreq = linearRegression(freqPlotPoints);
+  const modulationPoints = [
+    { x: 1.0, y: 1.0 },
+    { x: 2.0, y: 0.943 },
+    { x: 4.0, y: 0.800 },
+    { x: 6.0, y: 0.700 },
+    { x: 8.0, y: 0.628 },
+    { x: 10.0, y: 0.574 },
+    { x: 12.0, y: 0.533 },
+    { x: 15.0, y: 0.485 },
+  ];
+  const fitMod = linearRegression(modulationPoints);
+
   const plots: PlotDefinition[] = [
     {
       id: 'plot_spatial_freq',
@@ -260,6 +274,14 @@ export function calculateHolographyData(
       xUnit: '°',
       yUnit: 'lines/mm',
       points: freqPlotPoints,
+      fitLine: {
+        slope: fitFreq.slope,
+        intercept: fitFreq.intercept,
+        rSquared: fitFreq.rSquared,
+        r: fitFreq.r,
+        rmse: fitFreq.rmse,
+        formulaText: `f = ${fitFreq.slope.toFixed(2)} θ + ${fitFreq.intercept.toFixed(1)} (R² = ${fitFreq.rSquared.toFixed(4)})`,
+      },
       targetWidthMm: 134.0,
       targetHeightMm: 52.0,
       showGrid: true,
@@ -271,16 +293,15 @@ export function calculateHolographyData(
       yLabel: '条纹调制度 m',
       xUnit: '',
       yUnit: '',
-      points: [
-        { x: 1.0, y: 1.0 },
-        { x: 2.0, y: 0.943 },
-        { x: 4.0, y: 0.800 },
-        { x: 6.0, y: 0.700 },
-        { x: 8.0, y: 0.628 },
-        { x: 10.0, y: 0.574 },
-        { x: 12.0, y: 0.533 },
-        { x: 15.0, y: 0.485 },
-      ],
+      points: modulationPoints,
+      fitLine: {
+        slope: fitMod.slope,
+        intercept: fitMod.intercept,
+        rSquared: fitMod.rSquared,
+        r: fitMod.r,
+        rmse: fitMod.rmse,
+        formulaText: `m = 2√K / (1 + K) (线性趋势 k = ${fitMod.slope.toFixed(4)})`,
+      },
       targetWidthMm: 134.0,
       targetHeightMm: 52.0,
       showGrid: true,

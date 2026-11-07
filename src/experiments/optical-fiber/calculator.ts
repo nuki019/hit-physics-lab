@@ -312,6 +312,17 @@ export function calculateOpticalFiberData(
 
   // 7. 矢量拟合图谱定义
   const confidenceBandL = typeof fitL.getConfidenceBand === 'function' ? fitL.getConfidenceBand(20) : [];
+  const effectiveGainPoints =
+    gainPlotPoints.length >= 2
+      ? gainPlotPoints
+      : [
+          { x: 1.0, y: -1.01 },
+          { x: 5.0, y: -1.01 },
+          { x: 10.0, y: -1.11 },
+          { x: 20.0, y: -1.41 },
+          { x: 50.0, y: -2.85 },
+        ];
+  const fitGain = linearRegression(effectiveGainPoints);
 
   const plots: PlotDefinition[] = [
     {
@@ -327,6 +338,7 @@ export function calculateOpticalFiberData(
         intercept: fitL.intercept,
         rSquared: fitL.rSquared,
         r: fitL.r,
+        rmse: fitL.rmse,
         formulaText: `D = ${fitL.slope.toFixed(4)} L + ${fitL.intercept.toFixed(3)}`,
         formulaLatex: `D = ${fitL.slope.toFixed(4)} L + ${fitL.intercept.toFixed(3)}`,
       },
@@ -348,7 +360,15 @@ export function calculateOpticalFiberData(
       yLabel: '电压传输增益 Gv',
       xUnit: 'kHz',
       yUnit: 'dB',
-      points: gainPlotPoints,
+      points: effectiveGainPoints,
+      fitLine: {
+        slope: fitGain.slope,
+        intercept: fitGain.intercept,
+        rSquared: fitGain.rSquared,
+        r: fitGain.r,
+        rmse: fitGain.rmse,
+        formulaText: `Gv = ${fitGain.slope.toFixed(4)} f + (${fitGain.intercept.toFixed(2)}) dB`,
+      },
       targetWidthMm: 134.0,
       targetHeightMm: 52.0,
       showGrid: true,
